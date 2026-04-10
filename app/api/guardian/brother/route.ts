@@ -1,17 +1,29 @@
 import { NextRequest, NextResponse } from "next/server";
-import { supabase } from "@/lib/supabase";
+import { createClient } from "@supabase/supabase-js"; // นำเข้าตัวสร้าง Client โดยตรง
 import { Brain } from "@/lib/guardian/brain"; 
 
 export async function POST(req: NextRequest) {
   try {
-    const { message, postId, effort, imageData, imageUrl, mode = 'chat' } = await req.json();
+    // 1. สร้าง Supabase Admin สำหรับใช้งานฝั่ง Server (ข้าม RLS)
+    const supabaseAdmin = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY! // สำคัญมาก: ต้องใช้ Key นี้เท่านั้น
+    );
+
+    const { message, postId, effort, imageData, userId, mode = 'chat' } = await req.json();
+    
     if (!postId) return NextResponse.json({ error: "Missing postId" }, { status: 400 });
 
-    // 1. ดึงบริบทตัวตน (Identity)
-    const { data: identity } = await supabase.from("identity_vault").select("core_summary").limit(1).maybeSingle();
+    // 2. ดึงบริบทตัวตน (Identity) โดยใช้สิทธิ์ Admin
+    const { data: identity } = await supabaseAdmin
+      .from("identity_vault")
+      .select("core_summary")
+      .limit(1)
+      .maybeSingle();
 
-    // 2. ดึงประวัติ 15 ข้อความล่าสุด (รวมถึงรูปภาพที่เพิ่งอัปโหลดไปด้วย)
-    const { data: history } = await supabase.from("post_updates")
+    // 3. ดึงประวัติ 15 ข้อความล่าสุด
+    const { data: history } = await supabaseAdmin
+      .from("post_updates")
       .select("role, update_text, image_url")
       .eq("post_id", postId)
       .not("update_text", "ilike", "%ระบบ Google%") 
@@ -19,22 +31,19 @@ export async function POST(req: NextRequest) {
       .order("created_at", { ascending: false })
       .limit(15);
 
-    // ปรับ History ให้ฉลาดขึ้น: ถ้ามีรูป ให้บอก AI ด้วยว่าน้องส่งรูปมานะ
     const historyData = history?.reverse().map(h => {
       const sender = h.role === 'user' ? 'น้อง' : 'พี่';
       const text = h.update_text || (h.image_url ? "[ส่งรูปภาพเข้ามา]" : "");
       return `${sender}: ${text}`;
     }).join(" | ") || "";
 
-    // 🛡️ ขั้นตอนที่ 3: (ตัดออก) ไม่ต้องบันทึกคำถามน้องซ้ำ เพราะบันทึกไปแล้วที่หน้า BrotherChat
-
-    // 4. สั่งสมองทำงาน
+    // 4. สั่งสมอง (Gemini) ทำงาน
     const brainRes = await Brain.analyze({ 
       message, 
       coreSummary: identity?.core_summary, 
       historyData,
       effort: Number(effort) || 5, 
-      imageData, // ถ้ามี imageData ส่งมา (เช่น รูปใบสุดท้าย) AI ก็ยังวิเคราะห์ได้
+      imageData, 
       mode 
     });
 
@@ -49,19 +58,20 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ reply: finalReply });
     }
 
-    // 6. บันทึกคำตอบของพี่ชายลง DB (ใช้ content_type: 'chat')
-    await supabase.from("post_updates").insert({
+    // 6. บันทึกคำตอบของพี่ชายลง DB โดยใช้สิทธิ์ Admin และระบุ userId
+    await supabaseAdmin.from("post_updates").insert({
       post_id: postId, 
       role: "brother", 
       update_text: finalReply, 
       content_type: 'chat',
-      created_at: new Date().toISOString() // ใส่เพื่อให้ลำดับเวลาแม่นยำ
+      user_id: userId, // บันทึกชื่อเล่นเพื่อให้ข้อมูลเชื่อมโยงกัน
+      created_at: new Date().toISOString()
     });
 
     return NextResponse.json({ reply: finalReply });
 
   } catch (err: any) {
     console.error("API Error:", err);
-    return NextResponse.json({ reply: "เออ... พี่ขอไปพักเติมน้ำมันแป๊บนะ" });
+    return NextResponse.json({ reply: "เออ... พี่ขอไปพักเติมน้ำมันแป๊บนะ" }, { status: 500 });
   }
 }
