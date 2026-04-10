@@ -1,26 +1,71 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
+/* --- 1. กำจัดแถบเลื่อน --- */
+* {
+  scrollbar-width: none !important;
+  -ms-overflow-style: none !important;
+}
+*::-webkit-scrollbar { display: none !important; }
+
+html, body { background-color: black; }
+
+/* --- 2. Particle Explosion & Animations --- */
+@keyframes particle-explosion {
+  0% { box-shadow: 0 0 0 0 rgba(255, 255, 0, 0.8); transform: scale(1); }
+  30% { box-shadow: 0 0 40px 15px rgba(255, 255, 0, 0.5); transform: scale(0.98); }
+  100% { box-shadow: 0 0 120px 40px rgba(255, 255, 0, 0); transform: scale(1); }
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+.sparkle-active {
+  animation: particle-explosion 0.8s ease-out forwards;
 }
 
-@media (prefers-color-scheme: dark) {
+/* --- 3. Mo-Me Signature & Glows --- */
+.vignette-layer {
+  /* สร้างรัศมีสีดำจางๆ วงกว้างเพื่อช่วยให้ตัวหนังสืออ่านง่ายขึ้นบนพื้นหลังที่มีรูป */
+  box-shadow: 0 0 120px 80px rgba(0, 0, 0, 0.8);
+  background: rgba(0, 0, 0, 0.4);
+  border-radius: 50%;
+}
+
+.btn-gold-glow {
+  background-color: #FFFF00 !important;
+  color: #000000 !important;
+  font-weight: 900 !important;
+  text-transform: uppercase;
+  box-shadow: 0 0 20px rgba(255, 255, 0, 0.5);
+  transition: all 0.3s ease;
+}
+
+@layer base {
   :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+    --mo-me-yellow: #FFFF00;
+    --mo-me-bg: #000000;
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+/* 🎚️ 4. Custom Effort Slider */
+input[type="range"] {
+  -webkit-appearance: none;
+  width: 100%;
+  background: transparent;
+}
+input[type="range"]::-webkit-slider-runnable-track {
+  width: 100%; height: 2px; cursor: pointer; background: rgba(255, 255, 0, 0.1); border-radius: 1px;
+}
+input[type="range"]::-webkit-slider-thumb {
+  height: 12px; width: 12px; border-radius: 50%; background: var(--mo-me-yellow);
+  cursor: pointer; -webkit-appearance: none; margin-top: -5px;
+  box-shadow: 0 0 10px rgba(255, 255, 0, 0.5);
+}
+.vignette-layer {
+  /* ปรับให้เล็กลงและนุ่มขึ้นเพื่อให้เหมาะกับระยะบรรทัดใหม่ */
+  box-shadow: 0 0 60px 40px rgba(0, 0, 0, 0.9);
+  background: rgba(0, 0, 0, 0.6);
+  border-radius: 100px;
+}
+button, 
+input[type="range"], 
+a {
+  cursor: pointer !important;
 }

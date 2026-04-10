@@ -1,65 +1,139 @@
-import Image from "next/image";
+"use client";
+import { useState, useEffect, Suspense, useCallback } from "react";
+import { supabase } from "@/lib/supabase";
+import { motion } from "framer-motion";
+import { useRouter } from "next/navigation"; 
+import Navbar from "@/components/Navbar"; 
 
-export default function Home() {
+function MoMeContent() {
+  const [activeCards, setActiveCards] = useState<any[]>([]);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const router = useRouter(); 
+
+  // --- 👤 ระบบระบุตัวตน (แบบบ้านๆ) ---
+  useEffect(() => {
+    const initUser = () => {
+      let savedUser = localStorage.getItem("mo_me_user");
+      if (!savedUser) {
+        const name = prompt("ระบุตัวตนของคุณเพื่อเข้าสู่ Mo-Me (ภาษาอังกฤษเท่านั้น):");
+        if (name) {
+          const formatted = name.trim().toLowerCase();
+          localStorage.setItem("mo_me_user", formatted);
+          setCurrentUserId(formatted);
+          window.location.reload(); // รีโหลดเพื่อให้โค้ดเริ่มทำงานด้วย ID ใหม่
+        } else {
+          // กรณีไม่ได้กรอก ให้เป็น guest ไว้ก่อนเพื่อไม่ให้แอปพัง
+          setCurrentUserId("guest");
+        }
+      } else {
+        setCurrentUserId(savedUser);
+      }
+    };
+    initUser();
+  }, []);
+
+  // --- 📡 ดึงข้อมูล Cards ---
+  const fetchEverything = useCallback(async () => {
+    // 🚩 ดึง ID ล่าสุดจาก localStorage โดยตรงเพื่อความชัวร์
+    const userId = localStorage.getItem("mo_me_user");
+    if (!userId) return;
+
+    const { data: cards, error: cardError } = await supabase
+      .from('artifacts')
+      .select('*')
+      .eq('is_archived', false) 
+      .eq('user_id', userId) // 🚩 ✅ กรองให้เห็นเฉพาะของตัวเอง
+      .order('created_at', { ascending: false });
+    
+    if (cardError) {
+      console.error("🔴 ดึง Cards พัง:", cardError);
+      return;
+    }
+    setActiveCards(cards);
+  }, []);
+
+  useEffect(() => {
+    if (!currentUserId) return; // รอให้มี ID ก่อนค่อยเริ่มดึงข้อมูล
+
+    fetchEverything();
+    
+    // 🚩 ปรับ Real-time ให้เช็คเฉพาะข้อมูลที่มีการเปลี่ยนแปลง
+    const channel = supabase
+      .channel('feed-live')
+      .on('postgres_changes', 
+        { event: '*', schema: 'public', table: 'artifacts' }, 
+        () => fetchEverything()
+      )
+      .subscribe();
+      
+    return () => { supabase.removeChannel(channel); };
+  }, [currentUserId, fetchEverything]);
+
   return (
-    <div className="flex min-h-screen items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex min-h-screen w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+    <div className="min-h-screen bg-black overflow-x-hidden relative selection:bg-[#FFFF00] selection:text-black">
+      <Navbar isEditing={false} onBack={() => {}} />
+
+      <motion.section 
+        initial={{ opacity: 0 }} 
+        animate={{ opacity: 1 }} 
+        className="px-6 pb-32 pt-32 max-w-lg mx-auto space-y-12"
+      >
+        <div className="flex flex-col items-center mb-16 space-y-4">
+           <h1 className="text-[10px] font-black tracking-[1em] text-zinc-600 uppercase">Chronicle Feed</h1>
+           {/* แสดงชื่อ User นิดนึงให้รู้ว่า Login เป็นใคร */}
+           <p className="text-[8px] text-[#FFFF00]/40 uppercase tracking-[0.3em]">Identity: {currentUserId}</p>
+           <div className="h-[1px] w-12 bg-zinc-900" />
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
+
+        {activeCards.length === 0 ? (
+          <div className="text-center py-20">
+             <p className="text-[10px] text-zinc-600 uppercase tracking-widest">No inscriptions found for this identity.</p>
+          </div>
+        ) : (
+          activeCards.map((card) => (
+            <motion.div 
+              key={card.id} 
+              layoutId={`card-container-${card.id}`}
+              whileHover={{ y: -10, transition: { duration: 0.4 } }}
+              onClick={() => {
+                router.push(`/archive/${card.id}`); 
+              }}
+              className="group relative w-full aspect-[4/5] rounded-[3rem] overflow-hidden bg-zinc-950 border border-white/[0.03] hover:border-[#FFFF00]/30 transition-all duration-700 cursor-pointer shadow-2xl"
+            >
+              <motion.img 
+                layoutId={`card-image-${card.id}`}
+                src={card.image_url} 
+                className="absolute inset-0 w-full h-full object-cover grayscale opacity-50 group-hover:grayscale-0 group-hover:opacity-80 group-hover:scale-110 transition-all duration-1000 ease-out" 
+                alt="" 
+              />
+              
+              <div className="absolute inset-0 bg-gradient-to-t from-black via-black/20 to-transparent opacity-80" />
+              
+              <div className="absolute inset-0 p-12 flex flex-col justify-end items-center text-center">
+                 <span className="text-[10px] font-black tracking-[0.5em] text-[#FFFF00]/40 uppercase mb-4 group-hover:text-[#FFFF00] transition-colors duration-500">
+                   Inscribed
+                 </span>
+                 <motion.h2 
+                  layoutId={`card-title-${card.id}`}
+                  className="text-3xl md:text-5xl font-serif italic text-white leading-tight tracking-tighter drop-shadow-[0_10px_10px_rgba(0,0,0,0.5)]"
+                 >
+                  {card.text || "Untitled"}
+                 </motion.h2>
+                 
+                 <div className="mt-6 h-[1px] w-0 group-hover:w-12 bg-[#FFFF00]/50 transition-all duration-700" />
+              </div>
+            </motion.div>
+          ))
+        )}
+      </motion.section>
     </div>
+  );
+}
+
+export default function MoMePage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-black flex items-center justify-center text-[#FFFF00] tracking-[1em] text-[10px]">SYNCING FEED...</div>}>
+      <MoMeContent />
+    </Suspense>
   );
 }
